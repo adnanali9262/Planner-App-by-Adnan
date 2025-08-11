@@ -1,18 +1,68 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Daily Planner</title>
-    <link rel="stylesheet" href="style.css">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Planner</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-    <div class="header">
-        <h2>Welcome to Your Planner</h2>
-        <button id="logoutBtn">Logout</button>
-    </div>
-    <div id="planner"></div>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="sidebar-top">
+        <div class="user-info">
+          <div id="userEmail" class="username">—</div>
+          <button id="signOutBtn" class="btn small">Sign out</button>
+        </div>
+        <div class="date-row">
+          <input id="datePicker" type="date" />
+        </div>
+      </div>
+      <div class="slots-list" id="slotsList" role="navigation" aria-label="Time slots"></div>
+    </aside>
 
-    <script type="module" src="planner.js"></script>
+    <section class="editor">
+      <header class="editor-header">
+        <div>
+          <h2 id="slotLabel">00:00</h2>
+          <div id="slotSub" class="muted">Select a slot on left or wait for current slot</div>
+        </div>
+        <div class="editor-actions">
+          <button id="saveBtn" class="btn primary">Save</button>
+        </div>
+      </header>
+
+      <main class="editor-main">
+        <label class="field">
+          <div class="field-title">Note</div>
+          <textarea id="note" placeholder="Write a note for this slot..." rows="6" disabled></textarea>
+        </label>
+
+        <div class="two-col">
+          <label class="field">
+            <div class="field-title">Follow-up date & time</div>
+            <input id="followup" type="datetime-local" disabled />
+          </label>
+
+          <label class="field">
+            <div class="field-title">Priority (<span id="prioVal">5</span>)</div>
+            <input id="priority" type="range" min="0" max="10" value="5" disabled />
+          </label>
+        </div>
+
+        <div class="alarm-row" id="alarmRow" style="display:none">
+          <div class="alarm-text">This slot is due!</div>
+          <div class="alarm-controls">
+            <button id="ackBtn" class="btn">Acknowledge</button>
+            <label class="snooze-label">Snooze <span id="snoozeVal">10</span> min</label>
+            <input id="snoozeSlider" type="range" min="5" max="120" step="5" value="10" />
+            <button id="snoozeBtn" class="btn">Snooze</button>
+          </div>
+        </div>
+      </main>
+    </section>
+  </div>
+
+  <script type="module" src="planner.js"></script>
 </body>
 </html>
