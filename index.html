@@ -1,20 +1,27 @@
-<!DOCTYPE html>
-<html>
+<!doctype html>
+<html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Planner Login</title>
-    <link rel="stylesheet" href="style.css">
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Planner — Login</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-    <div class="login-container">
-        <h2>Login to Your Planner</h2>
-        <input type="email" id="email" placeholder="Email">
-        <input type="password" id="password" placeholder="Password">
-        <button id="loginBtn">Login</button>
-        <button id="registerBtn">Register</button>
+  <main class="auth-page">
+    <div class="auth-card">
+      <h1>Sign in to Planner</h1>
+      <div class="muted">Use your email & password — data syncs to your devices</div>
+      <input id="email" type="email" placeholder="Email" autocomplete="username" />
+      <input id="password" type="password" placeholder="Password" autocomplete="current-password" />
+      <div class="row">
+        <button id="loginBtn" class="btn primary">Login</button>
+        <button id="registerBtn" class="btn">Register</button>
+      </div>
+      <div id="authMsg" class="muted" style="margin-top:8px"></div>
     </div>
+  </main>
 
-    <script type="module" src="script.js"></script>
+  <!-- runs modular auth -->
+  <script type="module" src="script.js"></script>
 </body>
 </html>
