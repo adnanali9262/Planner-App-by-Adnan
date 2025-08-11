@@ -1,4 +1,4 @@
-// Firebase config
+// Firebase config (your own)
 const firebaseConfig = {
     apiKey: "AIzaSyAdT__ih2Cpx63eelLR3fkZuOp_XCdNc3k",
     authDomain: "planner-project-87612.firebaseapp.com",
@@ -8,109 +8,117 @@ const firebaseConfig = {
     appId: "1:625352854092:web:ec816304828365d727c2e9"
 };
 
-// Init Firebase
-firebase.initializeApp(firebaseConfig);
+// Initialize Firebase
+const app = firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
-// DOM
-const authSection = document.getElementById("auth-section");
-const plannerSection = document.getElementById("planner-section");
-const emailField = document.getElementById("email");
-const passField = document.getElementById("password");
-const loginBtn = document.getElementById("loginBtn");
-const registerBtn = document.getElementById("registerBtn");
-const logoutBtn = document.getElementById("logoutBtn");
-const slotsDiv = document.getElementById("slots");
-
-let userId = null;
+const loginBtn = document.getElementById('loginBtn');
+const registerBtn = document.getElementById('registerBtn');
+const emailInput = document.getElementById('email');
+const passwordInput = document.getElementById('password');
+const authMessage = document.getElementById('authMessage');
+const plannerSection = document.getElementById('planner-section');
+const authSection = document.getElementById('auth-section');
+const slotsContainer = document.getElementById('slots');
 
 // Create 48 slots
-function generateSlots() {
-    slotsDiv.innerHTML = "";
+function createSlots() {
+    slotsContainer.innerHTML = '';
     for (let i = 0; i < 48; i++) {
         let hour = Math.floor(i / 2);
-        let minute = i % 2 === 0 ? "00" : "30";
-        let time = `${hour.toString().padStart(2, '0')}:${minute}`;
-        
-        let slotDiv = document.createElement("div");
-        slotDiv.className = "slot";
-        slotDiv.id = `slot-${i}`;
-        slotDiv.innerHTML = `
-            <strong>${time}</strong><br>
-            <input type="text" id="note-${i}" placeholder="Note">
-            <input type="datetime-local" id="follow-${i}">
-            <button onclick="saveSlot(${i})">Save</button>
-        `;
-        slotsDiv.appendChild(slotDiv);
+        let minute = (i % 2) * 30;
+        let timeLabel = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+
+        let slotDiv = document.createElement('div');
+        slotDiv.className = 'slot';
+        slotDiv.dataset.time = timeLabel;
+
+        let label = document.createElement('span');
+        label.textContent = timeLabel;
+
+        let input = document.createElement('input');
+        input.type = 'text';
+        input.placeholder = 'Note...';
+
+        let followUpInput = document.createElement('input');
+        followUpInput.type = 'datetime-local';
+
+        input.addEventListener('change', () => saveSlot(timeLabel, input.value, followUpInput.value));
+        followUpInput.addEventListener('change', () => saveSlot(timeLabel, input.value, followUpInput.value));
+
+        slotDiv.appendChild(label);
+        slotDiv.appendChild(input);
+        slotDiv.appendChild(followUpInput);
+        slotsContainer.appendChild(slotDiv);
     }
 }
 
 // Save slot to Firestore
-function saveSlot(i) {
-    let note = document.getElementById(`note-${i}`).value;
-    let follow = document.getElementById(`follow-${i}`).value;
-
-    db.collection("users").doc(userId).collection("slots").doc(`${i}`).set({
-        note: note,
-        follow: follow
-    });
+function saveSlot(time, note, followUp) {
+    const user = auth.currentUser;
+    if (!user) return;
+    db.collection('planners').doc(user.uid).collection('days').doc(new Date().toDateString())
+        .set({
+            [time]: { note, followUp }
+        }, { merge: true });
 }
 
 // Load slots from Firestore
 function loadSlots() {
-    db.collection("users").doc(userId).collection("slots").get().then(snapshot => {
-        snapshot.forEach(doc => {
-            let data = doc.data();
-            let i = doc.id;
-            document.getElementById(`note-${i}`).value = data.note || "";
-            document.getElementById(`follow-${i}`).value = data.follow || "";
-        });
-    });
-}
+    const user = auth.currentUser;
+    if (!user) return;
+    db.collection('planners').doc(user.uid).collection('days').doc(new Date().toDateString())
+        .onSnapshot(doc => {
+            createSlots();
+            const data = doc.data();
+            if (data) {
+                document.querySelectorAll('.slot').forEach(slot => {
+                    const time = slot.dataset.time;
+                    if (data[time]) {
+                        slot.querySelector('input[type="text"]').value = data[time].note || '';
+                        slot.querySelector('input[type="datetime-local"]').value = data[time].followUp || '';
 
-// Check alarms every minute
-setInterval(() => {
-    let now = new Date();
-    db.collection("users").doc(userId).collection("slots").get().then(snapshot => {
-        snapshot.forEach(doc => {
-            let follow = doc.data().follow;
-            if (follow) {
-                let followDate = new Date(follow);
-                let slotDiv = document.getElementById(`slot-${doc.id}`);
-                if (followDate <= now) {
-                    slotDiv.classList.add("alarm");
-                } else {
-                    slotDiv.classList.remove("alarm");
-                }
+                        // Check for red alert
+                        if (data[time].followUp && new Date(data[time].followUp) <= new Date()) {
+                            slot.classList.add('red-alert');
+                        } else {
+                            slot.classList.remove('red-alert');
+                        }
+                    }
+                });
             }
         });
-    });
-}, 60000);
+}
 
-// Auth
-loginBtn.onclick = () => {
-    auth.signInWithEmailAndPassword(emailField.value, passField.value)
-        .catch(err => alert(err.message));
-};
+// Auth listeners
+loginBtn.addEventListener('click', () => {
+    auth.signInWithEmailAndPassword(emailInput.value, passwordInput.value)
+        .then(() => {
+            authMessage.textContent = '';
+        })
+        .catch(err => {
+            authMessage.textContent = err.message;
+        });
+});
 
-registerBtn.onclick = () => {
-    auth.createUserWithEmailAndPassword(emailField.value, passField.value)
-        .catch(err => alert(err.message));
-};
-
-logoutBtn.onclick = () => auth.signOut();
+registerBtn.addEventListener('click', () => {
+    auth.createUserWithEmailAndPassword(emailInput.value, passwordInput.value)
+        .then(() => {
+            authMessage.textContent = '';
+        })
+        .catch(err => {
+            authMessage.textContent = err.message;
+        });
+});
 
 auth.onAuthStateChanged(user => {
     if (user) {
-        userId = user.uid;
-        authSection.style.display = "none";
-        plannerSection.style.display = "block";
-        generateSlots();
+        authSection.style.display = 'none';
+        plannerSection.style.display = 'block';
         loadSlots();
     } else {
-        authSection.style.display = "block";
-        plannerSection.style.display = "none";
-        userId = null;
+        authSection.style.display = 'block';
+        plannerSection.style.display = 'none';
     }
 });
