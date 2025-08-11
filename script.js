@@ -37,6 +37,6 @@ document.getElementById("loginBtn").addEventListener("click", async () => {
 // If logged in, go to planner
 onAuthStateChanged(auth, (user) => {
   if (user) {
-    window.location.href = "planner.html";
+    window.location.href = "/Planner-App-by-Adnan/planner.html";
   }
 });
