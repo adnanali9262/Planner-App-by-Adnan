@@ -17,7 +17,6 @@ const auth = getAuth(app);
 document.getElementById("registerBtn").addEventListener("click", async () => {
   const email = document.getElementById("email").value.trim();
   const password = document.getElementById("password").value.trim();
-
   try {
     const userCredential = await createUserWithEmailAndPassword(auth, email, password);
     document.getElementById("status").innerText = `Registered: ${userCredential.user.email}`;
@@ -29,7 +28,6 @@ document.getElementById("registerBtn").addEventListener("click", async () => {
 document.getElementById("loginBtn").addEventListener("click", async () => {
   const email = document.getElementById("email").value.trim();
   const password = document.getElementById("password").value.trim();
-
   try {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     document.getElementById("status").innerText = `Logged in: ${userCredential.user.email}`;
