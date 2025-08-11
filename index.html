@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>My Planner</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      background: #f9f9f9;
+    }
+    header {
+      background: #007bff;
+      color: white;
+      padding: 10px;
+      text-align: center;
+    }
+    #login-section, #planner-section {
+      max-width: 800px;
+      margin: auto;
+      padding: 15px;
+    }
+    .slot {
+      background: white;
+      margin: 5px 0;
+      padding: 10px;
+      border-radius: 5px;
+      display: flex;
+      flex-direction: column;
+    }
+    .slot-header {
+      display: flex;
+      justify-content: space-between;
+      font-weight: bold;
+    }
+    textarea {
+      width: 100%;
+      height: 40px;
+      margin-top: 5px;
+      resize: vertical;
+    }
+    input[type="datetime-local"] {
+      margin-top: 5px;
+    }
+    .alarm {
+      background: #ffcccc !important;
+    }
+    button {
+      margin-top: 5px;
+      padding: 5px 10px;
+      border: none;
+      background: #007bff;
+      color: white;
+      cursor: pointer;
+      border-radius: 3px;
+    }
+    button:hover {
+      background: #0056b3;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Daily Planner</h1>
+  </header>
+
+  <!-- Login Section -->
+  <div id="login-section">
+    <h2>Login</h2>
+    <input type="email" id="email" placeholder="Email"><br><br>
+    <input type="password" id="password" placeholder="Password"><br><br>
+    <button onclick="login()">Login</button>
+    <button onclick="signup()">Sign Up</button>
+  </div>
+
+  <!-- Planner Section -->
+  <div id="planner-section" style="display:none;">
+    <button onclick="logout()">Logout</button>
+    <h2 id="date-title"></h2>
+    <div id="slots"></div>
+  </div>
+
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-auth.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/11.0.1/firebase-firestore.js"></script>
+
+  <script>
+    // Firebase Config
+    const firebaseConfig = {
+      apiKey: "AIzaSyAdT__ih2Cpx63eelLR3fkZuOp_XCdNc3k",
+      authDomain: "planner-project-87612.firebaseapp.com",
+      projectId: "planner-project-87612",
+      storageBucket: "planner-project-87612.firebasestorage.app",
+      messagingSenderId: "625352854092",
+      appId: "1:625352854092:web:ec816304828365d727c2e9"
+    };
+
+    // Init Firebase
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+    const db = firebase.firestore();
+
+    const loginSection = document.getElementById('login-section');
+    const plannerSection = document.getElementById('planner-section');
+    const slotsDiv = document.getElementById('slots');
+    const dateTitle = document.getElementById('date-title');
+
+    // Auth State Listener
+    auth.onAuthStateChanged(user => {
+      if (user) {
+        loginSection.style.display = "none";
+        plannerSection.style.display = "block";
+        loadPlanner();
+      } else {
+        loginSection.style.display = "block";
+        plannerSection.style.display = "none";
+      }
+    });
+
+    function login() {
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      auth.signInWithEmailAndPassword(email, password)
+        .catch(err => alert(err.message));
+    }
+
+    function signup() {
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      auth.createUserWithEmailAndPassword(email, password)
+        .catch(err => alert(err.message));
+    }
+
+    function logout() {
+      auth.signOut();
+    }
+
+    function getTodayDateKey() {
+      const today = new Date();
+      return today.toISOString().split('T')[0]; // YYYY-MM-DD
+    }
+
+    function loadPlanner() {
+      slotsDiv.innerHTML = '';
+      const todayKey = getTodayDateKey();
+      dateTitle.innerText = "Planner for " + todayKey;
+
+      for (let i = 0; i < 48; i++) {
+        const hour = Math.floor(i / 2);
+        const minute = (i % 2) * 30;
+        const timeLabel = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`;
+
+        const slotEl = document.createElement('div');
+        slotEl.classList.add('slot');
+        slotEl.id = `slot-${i}`;
+
+        const header = document.createElement('div');
+        header.classList.add('slot-header');
+        header.innerHTML = `<span>${timeLabel}</span>`;
+
+        const noteArea = document.createElement('textarea');
+        noteArea.id = `note-${i}`;
+
+        const followUp = document.createElement('input');
+        followUp.type = "datetime-local";
+        followUp.id = `follow-${i}`;
+
+        const saveBtn = document.createElement('button');
+        saveBtn.innerText = "Save";
+        saveBtn.onclick = () => saveSlot(todayKey, i);
+
+        slotEl.appendChild(header);
+        slotEl.appendChild(noteArea);
+        slotEl.appendChild(followUp);
+        slotEl.appendChild(saveBtn);
+
+        slotsDiv.appendChild(slotEl);
+      }
+
+      // Load from Firestore
+      const uid = auth.currentUser.uid;
+      db.collection('planners').doc(uid).collection(todayKey).onSnapshot(snapshot => {
+        snapshot.forEach(doc => {
+          const data = doc.data();
+          document.getElementById(`note-${doc.id}`).value = data.note || '';
+          document.getElementById(`follow-${doc.id}`).value = data.followUp || '';
+        });
+        checkAlarms();
+      });
+    }
+
+    function saveSlot(dateKey, slotIndex) {
+      const note = document.getElementById(`note-${slotIndex}`).value;
+      const followUp = document.getElementById(`follow-${slotIndex}`).value;
+      const uid = auth.currentUser.uid;
+
+      db.collection('planners').doc(uid).collection(dateKey).doc(slotIndex.toString())
+        .set({ note, followUp })
+        .then(() => console.log(`Saved slot ${slotIndex}`))
+        .catch(err => console.error(err));
+    }
+
+    function checkAlarms() {
+      const now = new Date();
+      for (let i = 0; i < 48; i++) {
+        const followUp = document.getElementById(`follow-${i}`).value;
+        const slotEl = document.getElementById(`slot-${i}`);
+        if (followUp) {
+          const followTime = new Date(followUp);
+          if (now >= followTime) {
+            slotEl.classList.add('alarm');
+          } else {
+            slotEl.classList.remove('alarm');
+          }
+        } else {
+          slotEl.classList.remove('alarm');
+        }
+      }
+    }
+
+    setInterval(checkAlarms, 30000); // Check alarms every 30 seconds
+  </script>
+</body>
+</html>
