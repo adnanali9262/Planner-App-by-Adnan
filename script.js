@@ -1,5 +1,5 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword } 
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged } 
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
 const firebaseConfig = {
@@ -18,8 +18,7 @@ document.getElementById("registerBtn").addEventListener("click", async () => {
   const email = document.getElementById("email").value.trim();
   const password = document.getElementById("password").value.trim();
   try {
-    const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-    document.getElementById("status").innerText = `Registered: ${userCredential.user.email}`;
+    await createUserWithEmailAndPassword(auth, email, password);
   } catch (error) {
     document.getElementById("status").innerText = error.message;
   }
@@ -29,9 +28,15 @@ document.getElementById("loginBtn").addEventListener("click", async () => {
   const email = document.getElementById("email").value.trim();
   const password = document.getElementById("password").value.trim();
   try {
-    const userCredential = await signInWithEmailAndPassword(auth, email, password);
-    document.getElementById("status").innerText = `Logged in: ${userCredential.user.email}`;
+    await signInWithEmailAndPassword(auth, email, password);
   } catch (error) {
     document.getElementById("status").innerText = error.message;
+  }
+});
+
+// If logged in, go to planner
+onAuthStateChanged(auth, (user) => {
+  if (user) {
+    window.location.href = "planner.html";
   }
 });
