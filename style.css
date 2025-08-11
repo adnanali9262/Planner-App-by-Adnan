@@ -1,46 +1,30 @@
 body {
-  font-family: Arial, sans-serif;
-  margin: 0;
-  padding: 10px;
-  background: #f4f4f4;
+    font-family: Arial, sans-serif;
+    background: #f5f5f5;
+    padding: 20px;
 }
 
-.auth-container {
-  max-width: 300px;
-  margin: auto;
-  background: white;
-  padding: 20px;
-  border-radius: 6px;
-  box-shadow: 0 0 10px #ccc;
-}
-
-input, button {
-  display: block;
-  width: 100%;
-  padding: 8px;
-  margin: 6px 0;
+#auth-section, #planner-section {
+    max-width: 500px;
+    margin: auto;
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
 }
 
 #slots {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
 }
 
 .slot {
-  background: white;
-  padding: 8px;
-  border-radius: 4px;
-  display: flex;
-  flex-direction: column;
+    background: #eee;
+    padding: 10px;
+    border-radius: 5px;
 }
 
-.slot.red {
-  border: 2px solid red;
-}
-
-textarea {
-  width: 100%;
-  resize: none;
-  height: 40px;
+.slot.alarm {
+    background: red;
+    color: white;
 }
