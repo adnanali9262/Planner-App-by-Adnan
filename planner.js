@@ -204,4 +204,77 @@ async function saveSelectedSlot(){
 // isDue check
 function isDue(entry){
   if(!entry || !entry.follow) return false;
-  if(entry.acknowledged)
+  if(entry.acknowledged) return false;
+  const t = new Date(entry.follow).getTime();
+  return t <= Date.now();
+}
+
+// alarm UI
+function updateAlarmUIForEntry(idx, entry){
+  const due = isDue(entry);
+  if(due){
+    alarmRow.style.display = 'flex';
+    ackBtn.disabled = false;
+    snoozeBtn.disabled = false;
+  } else {
+    alarmRow.style.display = 'none';
+  }
+}
+
+// ack button
+ackBtn.addEventListener('click', async () => {
+  if(selectedIndex === null) return;
+  entries[selectedIndex].acknowledged = true;
+  await saveSelectedSlot();
+  updateAlarmUIForEntry(selectedIndex, entries[selectedIndex]);
+});
+
+// snooze slider
+snoozeSlider.addEventListener('input', () => { snoozeVal.textContent = snoozeSlider.value; });
+snoozeBtn.addEventListener('click', async () => {
+  if(selectedIndex === null) return;
+  const mins = Number(snoozeSlider.value);
+  const now = new Date();
+  now.setMinutes(now.getMinutes() + mins);
+  entries[selectedIndex].follow = now.toISOString();
+  entries[selectedIndex].acknowledged = false;
+  await saveSelectedSlot();
+  alert(`Snoozed ${mins} minutes`);
+  updateAlarmUIForEntry(selectedIndex, entries[selectedIndex]);
+});
+
+// periodic alarm checker
+setInterval(async () => {
+  if(!currentUser) return;
+  // refresh day doc
+  const docRef = doc(db, 'planners', currentUser.uid, 'days', currentDateStr);
+  const snap = await getDocSafe(docRef);
+  if(snap && snap.entries) {
+    entries = snap.entries;
+    // update small labels and due badges
+    times.forEach((t, idx) => {
+      const item = document.querySelector(`.slot-item[data-idx='${idx}']`);
+      if(item) item.classList.toggle('due', isDue(entries[idx]));
+      if(selectedIndex === idx) updateAlarmUIForEntry(idx, entries[idx]);
+      const small = document.getElementById(`small-${idx}`);
+      if(small) small.textContent = entries[idx]?.follow ? new Date(entries[idx].follow).toLocaleString() : '';
+    });
+    // if selected slot due -> show
+    if(selectedIndex !== null && isDue(entries[selectedIndex])) {
+      updateAlarmUIForEntry(selectedIndex, entries[selectedIndex]);
+      // show notification
+      tryNotifyIfNeeded();
+    }
+  }
+}, 20000);
+
+// browser notification (will ask permission)
+async function tryNotifyIfNeeded(){
+  if(!("Notification" in window)) return;
+  if(Notification.permission === 'granted') {
+    new Notification('Planner: follow-up due', { body: `${slotLabel.textContent} is due.` });
+  } else if(Notification.permission !== 'denied') {
+    const p = await Notification.requestPermission();
+    if(p === 'granted') tryNotifyIfNeeded();
+  }
+}
