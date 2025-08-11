@@ -1,0 +1,46 @@
+body {
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 10px;
+  background: #f4f4f4;
+}
+
+.auth-container {
+  max-width: 300px;
+  margin: auto;
+  background: white;
+  padding: 20px;
+  border-radius: 6px;
+  box-shadow: 0 0 10px #ccc;
+}
+
+input, button {
+  display: block;
+  width: 100%;
+  padding: 8px;
+  margin: 6px 0;
+}
+
+#slots {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.slot {
+  background: white;
+  padding: 8px;
+  border-radius: 4px;
+  display: flex;
+  flex-direction: column;
+}
+
+.slot.red {
+  border: 2px solid red;
+}
+
+textarea {
+  width: 100%;
+  resize: none;
+  height: 40px;
+}
