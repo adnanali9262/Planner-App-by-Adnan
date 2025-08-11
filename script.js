@@ -1,3 +1,8 @@
+// Import Firebase modules from CDN
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword } 
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
 // Your Firebase config
 const firebaseConfig = {
   apiKey: "AIzaSyAdT__ih2Cpx63eelLR3fkZuOp_XCdNc3k",
@@ -9,31 +14,31 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-const app = firebase.initializeApp(firebaseConfig);
-const auth = firebase.auth();
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
 
-// Register
-document.getElementById("registerBtn").addEventListener("click", function() {
-  const email = document.getElementById("email").value;
-  const password = document.getElementById("password").value;
+// Register button click
+document.getElementById("registerBtn").addEventListener("click", () => {
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value.trim();
 
-  auth.createUserWithEmailAndPassword(email, password)
+  createUserWithEmailAndPassword(auth, email, password)
     .then(userCredential => {
-      alert("Registration successful! Logged in as " + userCredential.user.email);
+      alert(`Registration successful: ${userCredential.user.email}`);
     })
     .catch(error => {
       alert(error.message);
     });
 });
 
-// Login
-document.getElementById("loginBtn").addEventListener("click", function() {
-  const email = document.getElementById("email").value;
-  const password = document.getElementById("password").value;
+// Login button click
+document.getElementById("loginBtn").addEventListener("click", () => {
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("password").value.trim();
 
-  auth.signInWithEmailAndPassword(email, password)
+  signInWithEmailAndPassword(auth, email, password)
     .then(userCredential => {
-      alert("Login successful! Welcome " + userCredential.user.email);
+      alert(`Login successful: ${userCredential.user.email}`);
     })
     .catch(error => {
       alert(error.message);
