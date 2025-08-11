@@ -1,11 +1,11 @@
-// Your Firebase Config
+// Firebase config
 const firebaseConfig = {
-  apiKey: "AIzaSyAdT__ih2Cpx63eelLR3fkZuOp_XCdNc3k",
-  authDomain: "planner-project-87612.firebaseapp.com",
-  projectId: "planner-project-87612",
-  storageBucket: "planner-project-87612.firebasestorage.app",
-  messagingSenderId: "625352854092",
-  appId: "1:625352854092:web:ec816304828365d727c2e9"
+    apiKey: "AIzaSyAdT__ih2Cpx63eelLR3fkZuOp_XCdNc3k",
+    authDomain: "planner-project-87612.firebaseapp.com",
+    projectId: "planner-project-87612",
+    storageBucket: "planner-project-87612.appspot.com",
+    messagingSenderId: "625352854092",
+    appId: "1:625352854092:web:ec816304828365d727c2e9"
 };
 
 // Init Firebase
@@ -13,85 +13,104 @@ firebase.initializeApp(firebaseConfig);
 const auth = firebase.auth();
 const db = firebase.firestore();
 
-// Auth Elements
-const loginContainer = document.getElementById("login-container");
-const plannerContainer = document.getElementById("planner-container");
-const emailInput = document.getElementById("email");
-const passwordInput = document.getElementById("password");
-const loginBtn = document.getElementById("login-btn");
-const registerBtn = document.getElementById("register-btn");
-const logoutBtn = document.getElementById("logout-btn");
-const authMsg = document.getElementById("auth-msg");
+// DOM
+const authSection = document.getElementById("auth-section");
+const plannerSection = document.getElementById("planner-section");
+const emailField = document.getElementById("email");
+const passField = document.getElementById("password");
+const loginBtn = document.getElementById("loginBtn");
+const registerBtn = document.getElementById("registerBtn");
+const logoutBtn = document.getElementById("logoutBtn");
+const slotsDiv = document.getElementById("slots");
 
-// Login
-loginBtn.onclick = () => {
-  auth.signInWithEmailAndPassword(emailInput.value, passwordInput.value)
-    .catch(err => authMsg.textContent = err.message);
-};
-
-// Register
-registerBtn.onclick = () => {
-  auth.createUserWithEmailAndPassword(emailInput.value, passwordInput.value)
-    .catch(err => authMsg.textContent = err.message);
-};
-
-// Logout
-logoutBtn.onclick = () => auth.signOut();
-
-// Listen for Auth Changes
-auth.onAuthStateChanged(user => {
-  if (user) {
-    loginContainer.style.display = "none";
-    plannerContainer.style.display = "block";
-    loadSlots(user.uid);
-  } else {
-    loginContainer.style.display = "block";
-    plannerContainer.style.display = "none";
-  }
-});
+let userId = null;
 
 // Create 48 slots
-function loadSlots(uid) {
-  const slotsDiv = document.getElementById("slots");
-  slotsDiv.innerHTML = "";
-  for (let i = 0; i < 48; i++) {
-    const hour = String(Math.floor(i / 2)).padStart(2, "0");
-    const minute = i % 2 === 0 ? "00" : "30";
-    const timeLabel = `${hour}:${minute}`;
-    const slotDiv = document.createElement("div");
-    slotDiv.classList.add("slot");
-    slotDiv.innerHTML = `
-      <strong>${timeLabel}</strong>
-      <textarea placeholder="Note..."></textarea>
-      <input type="datetime-local" />
-      <button>Save</button>
-    `;
-    slotsDiv.appendChild(slotDiv);
-
-    // Load data from Firestore
-    db.collection("planner").doc(uid).collection("slots").doc(timeLabel)
-      .get().then(doc => {
-        if (doc.exists) {
-          const data = doc.data();
-          slotDiv.querySelector("textarea").value = data.note || "";
-          if (data.followUp) slotDiv.querySelector("input").value = data.followUp;
-        }
-      });
-
-    // Save button
-    slotDiv.querySelector("button").onclick = () => {
-      const note = slotDiv.querySelector("textarea").value;
-      const followUp = slotDiv.querySelector("input").value;
-      db.collection("planner").doc(uid).collection("slots").doc(timeLabel)
-        .set({ note, followUp });
-    };
-
-    // Alarm check every minute
-    setInterval(() => {
-      const followUpTime = slotDiv.querySelector("input").value;
-      if (followUpTime && new Date(followUpTime) <= new Date()) {
-        slotDiv.classList.add("red");
-      }
-    }, 60000);
-  }
+function generateSlots() {
+    slotsDiv.innerHTML = "";
+    for (let i = 0; i < 48; i++) {
+        let hour = Math.floor(i / 2);
+        let minute = i % 2 === 0 ? "00" : "30";
+        let time = `${hour.toString().padStart(2, '0')}:${minute}`;
+        
+        let slotDiv = document.createElement("div");
+        slotDiv.className = "slot";
+        slotDiv.id = `slot-${i}`;
+        slotDiv.innerHTML = `
+            <strong>${time}</strong><br>
+            <input type="text" id="note-${i}" placeholder="Note">
+            <input type="datetime-local" id="follow-${i}">
+            <button onclick="saveSlot(${i})">Save</button>
+        `;
+        slotsDiv.appendChild(slotDiv);
+    }
 }
+
+// Save slot to Firestore
+function saveSlot(i) {
+    let note = document.getElementById(`note-${i}`).value;
+    let follow = document.getElementById(`follow-${i}`).value;
+
+    db.collection("users").doc(userId).collection("slots").doc(`${i}`).set({
+        note: note,
+        follow: follow
+    });
+}
+
+// Load slots from Firestore
+function loadSlots() {
+    db.collection("users").doc(userId).collection("slots").get().then(snapshot => {
+        snapshot.forEach(doc => {
+            let data = doc.data();
+            let i = doc.id;
+            document.getElementById(`note-${i}`).value = data.note || "";
+            document.getElementById(`follow-${i}`).value = data.follow || "";
+        });
+    });
+}
+
+// Check alarms every minute
+setInterval(() => {
+    let now = new Date();
+    db.collection("users").doc(userId).collection("slots").get().then(snapshot => {
+        snapshot.forEach(doc => {
+            let follow = doc.data().follow;
+            if (follow) {
+                let followDate = new Date(follow);
+                let slotDiv = document.getElementById(`slot-${doc.id}`);
+                if (followDate <= now) {
+                    slotDiv.classList.add("alarm");
+                } else {
+                    slotDiv.classList.remove("alarm");
+                }
+            }
+        });
+    });
+}, 60000);
+
+// Auth
+loginBtn.onclick = () => {
+    auth.signInWithEmailAndPassword(emailField.value, passField.value)
+        .catch(err => alert(err.message));
+};
+
+registerBtn.onclick = () => {
+    auth.createUserWithEmailAndPassword(emailField.value, passField.value)
+        .catch(err => alert(err.message));
+};
+
+logoutBtn.onclick = () => auth.signOut();
+
+auth.onAuthStateChanged(user => {
+    if (user) {
+        userId = user.uid;
+        authSection.style.display = "none";
+        plannerSection.style.display = "block";
+        generateSlots();
+        loadSlots();
+    } else {
+        authSection.style.display = "block";
+        plannerSection.style.display = "none";
+        userId = null;
+    }
+});
