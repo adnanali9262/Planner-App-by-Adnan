@@ -1,64 +1,32 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1"/>
-  <title>Planner — Dashboard</title>
-  <link rel="stylesheet" href="style.css"/>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Your Planner</title>
+  <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="app">
-    <!-- LEFT: current date & time (10-min interval) -->
-    <aside class="left-col card">
-      <div class="left-inner">
-        <div class="left-title">Current slot</div>
-        <div id="leftDate" class="large muted"></div>
-        <div id="leftTime" class="time large"></div>
-        <div class="muted small">(rounded to 10-minute interval)</div>
-      </div>
-    </aside>
+  <header>
+    <h2 id="currentDateTime"></h2>
+    <button id="logoutBtn">Logout</button>
+  </header>
 
-    <!-- CENTER: editor -->
-    <main class="center-col card">
-      <div class="editor-top">
-        <div>
-          <h2 id="slotLabel">— : —</h2>
-          <div id="slotSub" class="muted">You can only save note for the current slot shown at left.</div>
-        </div>
-      </div>
+  <main>
+    <section class="center-section">
+      <textarea id="noteInput" placeholder="Write your note here..."></textarea>
+      <label>Follow-up Date & Time:</label>
+      <input type="datetime-local" id="followUpTime">
+      <button id="saveNoteBtn">Save Note</button>
+    </section>
 
-      <label class="field">
-        <div class="field-title">Note</div>
-        <textarea id="note" placeholder="Write your note here..."></textarea>
-      </label>
-
-      <div class="field row">
-        <div style="flex:1">
-          <div class="field-title">Follow-up date & time</div>
-          <input id="followup" type="datetime-local" />
-        </div>
-        <div style="width:160px; margin-left:12px;">
-          <div class="field-title">Save</div>
-          <button id="saveBtn" class="btn primary full">Save current slot</button>
-        </div>
-      </div>
-
-      <div id="saveMsg" class="muted small" style="margin-top:8px"></div>
-    </main>
-
-    <!-- RIGHT: recent and upcoming -->
-    <aside class="right-col card">
-      <div class="panel">
-        <h3>Recent notes</h3>
-        <div id="recentList" class="list"></div>
-      </div>
-
-      <div class="panel" style="margin-top:14px">
-        <h3>Upcoming follow-ups</h3>
-        <div id="upcomingList" class="list"></div>
-      </div>
-    </aside>
-  </div>
+    <section class="right-section">
+      <h3>Recent Notes</h3>
+      <ul id="recentNotes"></ul>
+      <h3>Upcoming Follow-ups</h3>
+      <ul id="upcomingFollowUps"></ul>
+    </section>
+  </main>
 
   <script type="module" src="planner.js"></script>
 </body>
