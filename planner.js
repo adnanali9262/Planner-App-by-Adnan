@@ -1,8 +1,10 @@
 // planner.js
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getAuth, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFirestore, doc, getDoc, setDoc, onSnapshot, updateDoc, serverTimestamp } 
-  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import {
+  getFirestore, collection, addDoc, query, where, orderBy,
+  onSnapshot, serverTimestamp, limit
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 /* ====== PASTE YOUR FIREBASE CONFIG BELOW ====== */
 const firebaseConfig = {
@@ -19,262 +21,157 @@ const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-const slotsList = document.getElementById('slotsList');
-const datePicker = document.getElementById('datePicker');
-const userEmailEl = document.getElementById('userEmail');
-const signOutBtn = document.getElementById('signOutBtn');
-
+// DOM
+const leftDate = document.getElementById('leftDate');
+const leftTime = document.getElementById('leftTime');
 const slotLabel = document.getElementById('slotLabel');
 const slotSub = document.getElementById('slotSub');
 const noteEl = document.getElementById('note');
 const followEl = document.getElementById('followup');
-const priorityEl = document.getElementById('priority');
-const prioVal = document.getElementById('prioVal');
 const saveBtn = document.getElementById('saveBtn');
-
-const alarmRow = document.getElementById('alarmRow');
-const ackBtn = document.getElementById('ackBtn');
-const snoozeBtn = document.getElementById('snoozeBtn');
-const snoozeSlider = document.getElementById('snoozeSlider');
-const snoozeVal = document.getElementById('snoozeVal');
+const saveMsg = document.getElementById('saveMsg');
+const recentList = document.getElementById('recentList');
+const upcomingList = document.getElementById('upcomingList');
 
 let currentUser = null;
-let currentDateStr = getDateKey(new Date());
-let entries = {}; // loaded day entries
-let selectedIndex = null;
-let autosaveTimer = null;
 
-// build time labels
-const times = []; // 48 labels
-for(let h=0; h<24; h++){
-  for(let m=0; m<60; m+=30){
-    times.push(`${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`);
-  }
+// ---- Helper: round down to nearest 10 minutes ----
+function roundDown10(d){
+  const dt = new Date(d);
+  const m = dt.getMinutes();
+  const m10 = Math.floor(m / 10) * 10;
+  dt.setMinutes(m10, 0, 0);
+  return dt;
+}
+function formatDateLong(d){
+  return d.toLocaleDateString() + ' • ' + d.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
 }
 
-// initialize date picker default to today
-datePicker.value = currentDateStr;
-datePicker.addEventListener('change', () => {
-  currentDateStr = datePicker.value;
-  if(currentUser) loadDay(currentUser.uid, currentDateStr);
-});
+// ---- Left panel live clock (updates display only when rounded time changes) ----
+let lastRounded = null;
+function updateLeftClock(){
+  const now = new Date();
+  const rounded = roundDown10(now);
+  if(!lastRounded || rounded.getTime() !== lastRounded.getTime()){
+    lastRounded = rounded;
+    leftDate.textContent = rounded.toLocaleDateString();
+    leftTime.textContent = rounded.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+    slotLabel.textContent = leftTime.textContent;
+    slotSub.textContent = 'You can save a note for this slot only';
+  }
+}
+updateLeftClock();
+setInterval(updateLeftClock, 5000); // check every 5s (fast enough)
 
-// auth
+// ---- Auth check ----
 onAuthStateChanged(auth, user => {
-  if(!user) { location.href = 'index.html'; return; }
+  if(!user){ // not signed in -> go back to login
+    location.href = 'index.html';
+    return;
+  }
   currentUser = user;
-  userEmailEl.textContent = user.email;
-  // populate slots list and load data
-  buildSlotsList();
-  loadDay(user.uid, currentDateStr);
+  startRealtimeLists();
 });
 
-// sign out
-signOutBtn.addEventListener('click', async () => {
-  await signOut(auth);
-  location.href = 'index.html';
-});
-
-// build left selector
-function buildSlotsList(){
-  slotsList.innerHTML = '';
-  const now = new Date();
-  const curIndex = Math.floor((now.getHours()*60 + now.getMinutes())/30);
-  times.forEach((t, idx) => {
-    const item = document.createElement('div');
-    item.className = 'slot-item';
-    item.dataset.idx = idx;
-    item.innerHTML = `<div>${t}</div><div class="muted" id="small-${idx}"></div>`;
-    item.addEventListener('click', () => selectSlot(idx, true));
-    if(idx === curIndex) item.classList.add('active');
-    slotsList.appendChild(item);
-  });
-}
-
-// select slot: if explicitClick true means user chose it
-function selectSlot(idx, explicitClick=false){
-  // by default, only current time slot is editable; explicit click allows editing others
-  const now = new Date();
-  const currentIndex = Math.floor((now.getHours()*60 + now.getMinutes())/30);
-  const allowEdit = explicitClick || idx === currentIndex;
-
-  selectedIndex = idx;
-  // update UI
-  document.querySelectorAll('.slot-item').forEach(el => el.classList.toggle('active', Number(el.dataset.idx)===idx));
-  slotLabel.textContent = times[idx];
-  slotSub.textContent = allowEdit ? 'Editable' : 'Read-only (click here to edit)';
-  noteEl.disabled = !allowEdit;
-  followEl.disabled = !allowEdit;
-  priorityEl.disabled = !allowEdit;
-  saveBtn.disabled = !allowEdit;
-
-  // load entry values
-  const e = entries[idx] || { note:'', follow:null, priority:5, acknowledged:false };
-  noteEl.value = e.note || '';
-  followEl.value = e.follow || '';
-  priorityEl.value = e.priority ?? 5;
-  prioVal.textContent = priorityEl.value;
-
-  // update small label in sidebar
-  const small = document.getElementById(`small-${idx}`);
-  if(small) small.textContent = e.follow ? new Date(e.follow).toLocaleString() : '';
-
-  // show alarm UI if due and not ack
-  updateAlarmUIForEntry(idx, e);
-}
-
-// load the day's entries from Firestore
-async function loadDay(uid, dateKey){
-  entries = {};
-  // doc path: planners/{uid}/days/{dateKey}
-  const docRef = doc(db, 'planners', uid, 'days', dateKey);
-  const snap = await getDocSafe(docRef);
-  if(snap) {
-    Object.assign(entries, snap);
-  }
-  // show small labels and initial selection
-  times.forEach((t, idx) => {
-    const small = document.getElementById(`small-${idx}`);
-    if(small) small.textContent = entries[idx]?.follow ? new Date(entries[idx].follow).toLocaleString() : '';
-    const item = document.querySelector(`.slot-item[data-idx='${idx}']`);
-    if(item) {
-      item.classList.toggle('due', isDue(entries[idx]));
-    }
-  });
-
-  // select current slot by default
-  const now = new Date();
-  const curIdx = Math.floor((now.getHours()*60 + now.getMinutes())/30);
-  selectSlot(curIdx, false);
-
-  // realtime: subscribe changes on the doc
-  const docRef2 = doc(db, 'planners', uid, 'days', dateKey);
-  // onSnapshot would require variable unsubscribe; for simplicity we re-load periodically and on save
-}
-
-// helper to safely get doc data
-async function getDocSafe(docRef){
+// ---- Save note: only for current rounded slot ----
+saveBtn.addEventListener('click', async () => {
+  if(!currentUser) { alert('Not signed in'); return; }
+  const note = noteEl.value.trim();
+  const followRaw = followEl.value;
+  // compute slotTime as rounded current time
+  const slotTime = roundDown10(new Date());
+  // only allow saving to current slotTime (guaranteed)
+  const payload = {
+    uid: currentUser.uid,
+    note,
+    savedAt: new Date().toISOString(),
+    slotTime: slotTime.toISOString(),
+    followUp: followRaw ? new Date(followRaw).toISOString() : null,
+    // metadata
+  };
   try {
-    const d = await getDoc(docRef);
-    if(d.exists()) return d.data();
-    return null;
-  }catch(e){
-    console.error('getDoc error', e);
-    return null;
+    await addDoc(collection(db, 'notes'), payload);
+    saveMsg.textContent = 'Saved';
+    setTimeout(()=> saveMsg.textContent = '', 1800);
+    noteEl.value = '';
+    followEl.value = '';
+  } catch(e){
+    console.error(e); alert('Save failed: '+e.message);
   }
-}
-
-// save current slot (debounced support)
-saveBtn.addEventListener('click', saveSelectedSlot);
-function scheduleSave(){
-  if(autosaveTimer) clearTimeout(autosaveTimer);
-  autosaveTimer = setTimeout(saveSelectedSlot, 700);
-}
-noteEl.addEventListener('input', scheduleSave);
-followEl.addEventListener('change', scheduleSave);
-priorityEl.addEventListener('input', () => { prioVal.textContent = priorityEl.value; scheduleSave(); });
-
-// save function writes full day doc merging only changed fields
-async function saveSelectedSlot(){
-  if(selectedIndex === null || currentUser === null) return;
-  const idx = selectedIndex;
-  const note = noteEl.value;
-  const follow = followEl.value || null;
-  const priority = Number(priorityEl.value);
-  entries[idx] = { note, follow, priority, acknowledged: entries[idx]?.acknowledged || false };
-
-  const docRef = doc(db, 'planners', currentUser.uid, 'days', currentDateStr);
-  // build object with only changed keys to merge
-  const payload = {};
-  payload[`entries.${idx}`] = entries[idx];
-  payload.updatedAt = serverTimestamp();
-  try {
-    await updateDoc(docRef, payload);
-  } catch(e) {
-    // if update fails (doc not exist), set entire doc
-    const full = { entries: entries, updatedAt: serverTimestamp() };
-    await setDoc(docRef, full);
-  }
-  // update UI small label
-  const small = document.getElementById(`small-${idx}`);
-  if(small) small.textContent = follow ? new Date(follow).toLocaleString() : '';
-  document.querySelector(`.slot-item[data-idx='${idx}']`)?.classList.toggle('due', isDue(entries[idx]));
-}
-
-// isDue check
-function isDue(entry){
-  if(!entry || !entry.follow) return false;
-  if(entry.acknowledged) return false;
-  const t = new Date(entry.follow).getTime();
-  return t <= Date.now();
-}
-
-// alarm UI
-function updateAlarmUIForEntry(idx, entry){
-  const due = isDue(entry);
-  if(due){
-    alarmRow.style.display = 'flex';
-    ackBtn.disabled = false;
-    snoozeBtn.disabled = false;
-  } else {
-    alarmRow.style.display = 'none';
-  }
-}
-
-// ack button
-ackBtn.addEventListener('click', async () => {
-  if(selectedIndex === null) return;
-  entries[selectedIndex].acknowledged = true;
-  await saveSelectedSlot();
-  updateAlarmUIForEntry(selectedIndex, entries[selectedIndex]);
 });
 
-// snooze slider
-snoozeSlider.addEventListener('input', () => { snoozeVal.textContent = snoozeSlider.value; });
-snoozeBtn.addEventListener('click', async () => {
-  if(selectedIndex === null) return;
-  const mins = Number(snoozeSlider.value);
-  const now = new Date();
-  now.setMinutes(now.getMinutes() + mins);
-  entries[selectedIndex].follow = now.toISOString();
-  entries[selectedIndex].acknowledged = false;
-  await saveSelectedSlot();
-  alert(`Snoozed ${mins} minutes`);
-  updateAlarmUIForEntry(selectedIndex, entries[selectedIndex]);
-});
-
-// periodic alarm checker
-setInterval(async () => {
-  if(!currentUser) return;
-  // refresh day doc
-  const docRef = doc(db, 'planners', currentUser.uid, 'days', currentDateStr);
-  const snap = await getDocSafe(docRef);
-  if(snap && snap.entries) {
-    entries = snap.entries;
-    // update small labels and due badges
-    times.forEach((t, idx) => {
-      const item = document.querySelector(`.slot-item[data-idx='${idx}']`);
-      if(item) item.classList.toggle('due', isDue(entries[idx]));
-      if(selectedIndex === idx) updateAlarmUIForEntry(idx, entries[idx]);
-      const small = document.getElementById(`small-${idx}`);
-      if(small) small.textContent = entries[idx]?.follow ? new Date(entries[idx].follow).toLocaleString() : '';
+// ---- Realtime lists: recent notes and upcoming follow-ups ----
+let recentUnsub = null, upcomingUnsub = null;
+function startRealtimeLists(){
+  // recent notes: latest 20 by savedAt
+  const recentQ = query(collection(db, 'notes'), where('uid','==', currentUser.uid), orderBy('savedAt','desc'), limit(30));
+  if(recentUnsub) recentUnsub();
+  recentUnsub = onSnapshot(recentQ, snapshot => {
+    recentList.innerHTML = '';
+    snapshot.forEach(doc => {
+      const d = doc.data();
+      recentList.appendChild(renderNoteItem(d));
     });
-    // if selected slot due -> show
-    if(selectedIndex !== null && isDue(entries[selectedIndex])) {
-      updateAlarmUIForEntry(selectedIndex, entries[selectedIndex]);
-      // show notification
-      tryNotifyIfNeeded();
-    }
-  }
-}, 20000);
+  });
 
-// browser notification (will ask permission)
-async function tryNotifyIfNeeded(){
-  if(!("Notification" in window)) return;
-  if(Notification.permission === 'granted') {
-    new Notification('Planner: follow-up due', { body: `${slotLabel.textContent} is due.` });
-  } else if(Notification.permission !== 'denied') {
-    const p = await Notification.requestPermission();
-    if(p === 'granted') tryNotifyIfNeeded();
-  }
+  // upcoming follow-ups: followUp >= now, order asc
+  const nowISO = new Date().toISOString();
+  const upcomingQ = query(collection(db, 'notes'), where('uid','==', currentUser.uid), where('followUp','!=', null), orderBy('followUp','asc'), limit(50));
+  if(upcomingUnsub) upcomingUnsub();
+  upcomingUnsub = onSnapshot(upcomingQ, snapshot => {
+    // filter client-side to only > some time (because inequality combos are limited)
+    const arr = [];
+    snapshot.forEach(d => {
+      const data = d.data();
+      if(data.followUp && new Date(data.followUp) >= new Date(0)) arr.push(data);
+    });
+    // sort by followUp ascending
+    arr.sort((a,b) => new Date(a.followUp) - new Date(b.followUp));
+    upcomingList.innerHTML = '';
+    const now = new Date();
+    arr.forEach(item => {
+      const el = renderUpcomingItem(item, now);
+      upcomingList.appendChild(el);
+    });
+  });
 }
+
+// Render helpers
+function renderNoteItem(d){
+  const el = document.createElement('div');
+  el.className = 'note-item';
+  const noteText = document.createElement('div');
+  noteText.textContent = d.note || '(empty)';
+  const meta = document.createElement('div');
+  meta.className = 'note-meta';
+  meta.innerHTML = `<span>${formatDateLong(new Date(d.savedAt))}</span>
+                    <span class="muted">${d.followUp ? new Date(d.followUp).toLocaleString() : ''}</span>`;
+  el.appendChild(noteText);
+  el.appendChild(meta);
+  return el;
+}
+function renderUpcomingItem(d, now){
+  const el = document.createElement('div');
+  el.className = 'note-item';
+  const ft = new Date(d.followUp);
+  const diff = ft - now;
+  if(diff <= 0) el.classList.add('due-now');
+  else if(diff <= (1000*60*60)) el.classList.add('due-warning'); // within 1 hour highlight
+  const noteText = document.createElement('div');
+  noteText.textContent = d.note || '(empty)';
+  const meta = document.createElement('div');
+  meta.className = 'note-meta';
+  meta.innerHTML = `<span>${ft.toLocaleString()}</span><span class="muted">${formatDateLong(new Date(d.savedAt))}</span>`;
+  el.appendChild(noteText);
+  el.appendChild(meta);
+  return el;
+}
+
+// optional: fetch initial lists once on load
+// startRealtimeLists() will be called after auth detected
+
+// cleanup on unload
+window.addEventListener('beforeunload', () => {
+  if(recentUnsub) recentUnsub();
+  if(upcomingUnsub) upcomingUnsub();
+});
