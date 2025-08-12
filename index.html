@@ -1,27 +1,77 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
   <title>Planner — Login</title>
-  <link rel="stylesheet" href="style.css" />
+  <link rel="stylesheet" href="style.css"/>
 </head>
 <body>
   <main class="auth-page">
     <div class="auth-card">
-      <h1>Sign in to Planner</h1>
-      <div class="muted">Use your email & password — data syncs to your devices</div>
+      <h1>Planner</h1>
+      <p class="muted">Sign in with Email / Password</p>
+
       <input id="email" type="email" placeholder="Email" autocomplete="username" />
       <input id="password" type="password" placeholder="Password" autocomplete="current-password" />
-      <div class="row">
+
+      <div class="row gap">
         <button id="loginBtn" class="btn primary">Login</button>
         <button id="registerBtn" class="btn">Register</button>
       </div>
-      <div id="authMsg" class="muted" style="margin-top:8px"></div>
+      <p id="authMsg" class="muted"></p>
     </div>
   </main>
 
-  <!-- runs modular auth -->
-  <script type="module" src="script.js"></script>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+    import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+    // ---------- PASTE YOUR FIREBASE CONFIG HERE ----------
+    const firebaseConfig = {
+      apiKey: "AIzaSyAdT__ih2Cpx63eelLR3fkZuOp_XCdNc3k",
+      authDomain: "planner-project-87612.firebaseapp.com",
+      projectId: "planner-project-87612",
+      storageBucket: "planner-project-87612.appspot.com",
+      messagingSenderId: "625352854092",
+      appId: "1:625352854092:web:ec816304828365d727c2e9"
+    };
+    // ----------------------------------------------------
+
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+
+    const emailEl = document.getElementById('email');
+    const passEl = document.getElementById('password');
+    const loginBtn = document.getElementById('loginBtn');
+    const regBtn = document.getElementById('registerBtn');
+    const authMsg = document.getElementById('authMsg');
+
+    loginBtn.addEventListener('click', async () => {
+      authMsg.textContent = '';
+      const email = emailEl.value.trim(), pw = passEl.value;
+      if(!email || !pw){ authMsg.textContent = 'Enter email & password'; return; }
+      try {
+        await signInWithEmailAndPassword(auth, email, pw);
+        // onAuthStateChanged will redirect
+      } catch (e) { authMsg.textContent = e.message; }
+    });
+
+    regBtn.addEventListener('click', async () => {
+      authMsg.textContent = '';
+      const email = emailEl.value.trim(), pw = passEl.value;
+      if(!email || !pw){ authMsg.textContent = 'Enter email & password'; return; }
+      try {
+        await createUserWithEmailAndPassword(auth, email, pw);
+      } catch (e) { authMsg.textContent = e.message; }
+    });
+
+    onAuthStateChanged(auth, (user) => {
+      if(user){
+        // redirect to planner - relative path (works on GitHub Pages if file in same folder)
+        window.location.href = 'planner.html';
+      }
+    });
+  </script>
 </body>
 </html>
