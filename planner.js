@@ -1,22 +1,16 @@
-// planner.js
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import {
-  getAuth,
-  onAuthStateChanged,
-  signOut
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import {
-  getFirestore,
-  collection,
-  addDoc,
-  serverTimestamp,
-  query,
-  where,
-  orderBy,
-  onSnapshot
-} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+// planner.js - REPLACE your current planner.js with this file
+// Uses modular Firebase SDK (CDN). Matches IDs in planner.html:
+// currentDateTime, logoutBtn, noteInput, followUpInput, saveNoteBtn,
+// recentNotes, upcomingNotes
 
-// === FIREBASE CONFIG (YOUR ACTUAL KEYS) ===
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import {
+  getFirestore, collection, addDoc, serverTimestamp,
+  query, where, orderBy, onSnapshot, Timestamp
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+/* ===== YOUR FIREBASE CONFIG (kept as you provided) ===== */
 const firebaseConfig = {
   apiKey: "AIzaSyAdT__ih2Cpx63eelLR3fkZuOp_XCdNc3k",
   authDomain: "planner-project-87612.firebaseapp.com",
@@ -25,112 +19,170 @@ const firebaseConfig = {
   messagingSenderId: "625352854092",
   appId: "1:625352854092:web:ec816304828365d727c2e9"
 };
+/* ====================================================== */
 
-// Initialize
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// DOM Elements
-const noteText = document.getElementById("note");
-const followUpDateTime = document.getElementById("followUp");
-const saveNoteBtn = document.getElementById("saveNote");
-const recentNotesList = document.getElementById("recentNotesList");
-const upcomingNotesList = document.getElementById("upcomingNotesList");
-const logoutBtn = document.getElementById("logoutBtn");
+// DOM refs (must match planner.html)
 const currentDateTimeEl = document.getElementById("currentDateTime");
+const logoutBtn = document.getElementById("logoutBtn");
+const noteInput = document.getElementById("noteInput");
+const followUpInput = document.getElementById("followUpInput");
+const saveNoteBtn = document.getElementById("saveNoteBtn");
+const recentNotesEl = document.getElementById("recentNotes");
+const upcomingNotesEl = document.getElementById("upcomingNotes");
 
-// === Show current date/time ===
-function updateDateTime() {
+if (!currentDateTimeEl || !noteInput || !followUpInput || !saveNoteBtn || !recentNotesEl || !upcomingNotesEl) {
+  console.error("planner.js: Required DOM element(s) not found. Check element IDs in planner.html");
+}
+
+// show current date & time (every second)
+function updateClock() {
   const now = new Date();
   currentDateTimeEl.textContent = now.toLocaleString();
 }
-setInterval(updateDateTime, 1000);
-updateDateTime();
+updateClock();
+setInterval(updateClock, 1000);
 
-// === Auth check ===
-onAuthStateChanged(auth, (user) => {
-  if (!user) {
+// Sign out handler
+logoutBtn?.addEventListener("click", async () => {
+  try {
+    await signOut(auth);
     window.location.href = "index.html";
-  } else {
-    loadNotes(user.uid);
+  } catch (err) {
+    console.error("Sign out error:", err);
+    alert("Sign out failed.");
   }
 });
 
-// === Logout ===
-logoutBtn.addEventListener("click", () => {
-  signOut(auth);
+let unsubRecent = null;
+let unsubUpcoming = null;
+
+// Auth watcher
+onAuthStateChanged(auth, user => {
+  if (!user) {
+    console.log("Not signed in — redirecting to login");
+    window.location.href = "index.html";
+    return;
+  }
+  console.log("Signed in as:", user.uid, user.email);
+  startRealtimeListeners(user.uid);
 });
 
-// === Save note ===
-saveNoteBtn.addEventListener("click", async () => {
+// Save note
+saveNoteBtn?.addEventListener("click", async () => {
   const user = auth.currentUser;
-  if (!user) return;
-
-  const noteContent = noteText.value.trim();
-  const followUpValue = followUpDateTime.value;
-
-  if (!noteContent) {
-    alert("Please write a note before saving.");
+  if (!user) {
+    alert("Not signed in.");
     return;
   }
 
-  try {
-    await addDoc(collection(db, "notes"), {
-      userId: user.uid,
-      note: noteContent,
-      followUp: followUpValue ? new Date(followUpValue) : null,
-      createdAt: serverTimestamp()
-    });
+  const text = (noteInput.value || "").trim();
+  if (!text) {
+    alert("Please enter a note before saving.");
+    return;
+  }
 
-    noteText.value = "";
-    followUpDateTime.value = "";
-  } catch (error) {
-    console.error("Error saving note:", error);
-    alert("Failed to save note.");
+  // build followUp as Firestore Timestamp or null
+  const followRaw = followUpInput.value;
+  const followTs = followRaw ? Timestamp.fromDate(new Date(followRaw)) : null;
+
+  const payload = {
+    userId: user.uid,
+    text,
+    followUp: followTs,
+    createdAt: serverTimestamp()
+  };
+
+  try {
+    console.log("Saving note...", payload);
+    await addDoc(collection(db, "notes"), payload);
+    noteInput.value = "";
+    followUpInput.value = "";
+    console.log("Saved successfully.");
+  } catch (err) {
+    console.error("Error saving note:", err);
+    alert("Save failed: " + (err.message || err));
   }
 });
 
-// === Load notes real-time ===
-function loadNotes(uid) {
-  // Recent notes
-  const recentQuery = query(
-    collection(db, "notes"),
-    where("userId", "==", uid),
-    orderBy("createdAt", "desc")
-  );
+// start realtime listeners for recent & upcoming
+function startRealtimeListeners(uid) {
+  // unsubscribe previous if present
+  if (unsubRecent) unsubRecent();
+  if (unsubUpcoming) unsubUpcoming();
 
-  onSnapshot(recentQuery, (snapshot) => {
-    recentNotesList.innerHTML = "";
-    snapshot.forEach((doc) => {
-      const data = doc.data();
-      const li = document.createElement("li");
-      li.textContent = `${data.note} — ${data.createdAt?.toDate().toLocaleString() || ""}`;
-      recentNotesList.appendChild(li);
+  // Recent notes (latest first)
+  try {
+    const recentQ = query(
+      collection(db, "notes"),
+      where("userId", "==", uid),
+      orderBy("createdAt", "desc")
+    );
+    unsubRecent = onSnapshot(recentQ, snapshot => {
+      recentNotesEl.innerHTML = "";
+      snapshot.forEach(doc => {
+        const d = doc.data();
+        // createdAt may be a Firestore Timestamp or missing (pending)
+        const created = d.createdAt && d.createdAt.toDate ? d.createdAt.toDate() : null;
+        const createdStr = created ? created.toLocaleString() : "(just now)";
+        const card = document.createElement("div");
+        card.className = "note-card";
+        card.innerHTML = `<div class="note-text">${escapeHtml(d.text)}</div>
+                          <div class="note-meta">${escapeHtml(createdStr)}${d.followUp ? " • Follow: " + escapeHtml(displayFollow(d.followUp)) : ""}</div>`;
+        recentNotesEl.appendChild(card);
+      });
+    }, err => {
+      console.error("recent onSnapshot error:", err);
     });
-  });
+  } catch (err) {
+    console.error("Failed to subscribe recent notes:", err);
+  }
 
-  // Upcoming follow-ups
-  const upcomingQuery = query(
-    collection(db, "notes"),
-    where("userId", "==", uid),
-    orderBy("followUp", "asc")
-  );
-
-  onSnapshot(upcomingQuery, (snapshot) => {
-    upcomingNotesList.innerHTML = "";
-    const now = new Date();
-    snapshot.forEach((doc) => {
-      const data = doc.data();
-      if (data.followUp) {
-        const followUpDate = data.followUp.toDate ? data.followUp.toDate() : new Date(data.followUp);
-        const li = document.createElement("li");
-        li.textContent = `${data.note} — Follow-up: ${followUpDate.toLocaleString()}`;
-        if (followUpDate <= now) {
-          li.style.color = "red";
-        }
-        upcomingNotesList.appendChild(li);
-      }
+  // Upcoming follow-ups (soonest first) — order by followUp asc and filter client-side for non-null
+  try {
+    const upcomingQ = query(
+      collection(db, "notes"),
+      where("userId", "==", uid),
+      orderBy("followUp", "asc")
+    );
+    unsubUpcoming = onSnapshot(upcomingQ, snapshot => {
+      upcomingNotesEl.innerHTML = "";
+      const now = new Date();
+      snapshot.forEach(doc => {
+        const d = doc.data();
+        if (!d.followUp) return; // skip items without followUp
+        const f = d.followUp.toDate ? d.followUp.toDate() : new Date(d.followUp);
+        const card = document.createElement("div");
+        card.className = "note-card" + (f <= now ? " overdue" : (f - now < 1000*60*60 ? " due-soon" : ""));
+        card.innerHTML = `<div class="note-text">${escapeHtml(d.text)}</div>
+                          <div class="note-meta">${escapeHtml(f.toLocaleString())} • ${escapeHtml(d.createdAt && d.createdAt.toDate ? d.createdAt.toDate().toLocaleString() : "(saved)")}</div>`;
+        upcomingNotesEl.appendChild(card);
+      });
+    }, err => {
+      console.error("upcoming onSnapshot error:", err);
     });
-  });
+  } catch (err) {
+    console.error("Failed to subscribe upcoming follow-ups:", err);
+  }
+}
+
+// small helper: display follow field whether Timestamp or string
+function displayFollow(f) {
+  if (!f) return "";
+  if (f.toDate) return f.toDate().toLocaleString();
+  try { return new Date(f).toLocaleString(); } catch(e){ return String(f); }
+}
+
+// escape HTML to avoid XSS when rendering note text
+function escapeHtml(str) {
+  if (!str) return "";
+  return String(str)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
 }
