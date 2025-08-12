@@ -1,8 +1,22 @@
+// planner.js
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
-import { getFirestore, collection, addDoc, query, where, orderBy, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+import {
+  getAuth,
+  onAuthStateChanged,
+  signOut
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import {
+  getFirestore,
+  collection,
+  addDoc,
+  serverTimestamp,
+  query,
+  where,
+  orderBy,
+  onSnapshot
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
-// Firebase config
+// === FIREBASE CONFIG (YOUR ACTUAL KEYS) ===
 const firebaseConfig = {
   apiKey: "AIzaSyAdT__ih2Cpx63eelLR3fkZuOp_XCdNc3k",
   authDomain: "planner-project-87612.firebaseapp.com",
@@ -12,38 +26,30 @@ const firebaseConfig = {
   appId: "1:625352854092:web:ec816304828365d727c2e9"
 };
 
-// Init Firebase
+// Initialize
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// UI Elements
-const currentDateTimeEl = document.getElementById("currentDateTime");
+// DOM Elements
+const noteText = document.getElementById("note");
+const followUpDateTime = document.getElementById("followUp");
+const saveNoteBtn = document.getElementById("saveNote");
+const recentNotesList = document.getElementById("recentNotesList");
+const upcomingNotesList = document.getElementById("upcomingNotesList");
 const logoutBtn = document.getElementById("logoutBtn");
-const noteInput = document.getElementById("noteInput");
-const followUpInput = document.getElementById("followUpInput");
-const saveNoteBtn = document.getElementById("saveNoteBtn");
-const recentNotesContainer = document.getElementById("recentNotes");
-const upcomingNotesContainer = document.getElementById("upcomingNotes");
+const currentDateTimeEl = document.getElementById("currentDateTime");
 
-// Tab switching
-document.querySelectorAll(".tab-button").forEach(btn => {
-  btn.addEventListener("click", () => {
-    document.querySelectorAll(".tab-button").forEach(b => b.classList.remove("active"));
-    document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
-    btn.classList.add("active");
-    document.getElementById(btn.dataset.tab).classList.add("active");
-  });
-});
-
-// Show current date & time
-setInterval(() => {
+// === Show current date/time ===
+function updateDateTime() {
   const now = new Date();
   currentDateTimeEl.textContent = now.toLocaleString();
-}, 1000);
+}
+setInterval(updateDateTime, 1000);
+updateDateTime();
 
-// Auth check
-onAuthStateChanged(auth, user => {
+// === Auth check ===
+onAuthStateChanged(auth, (user) => {
   if (!user) {
     window.location.href = "index.html";
   } else {
@@ -51,55 +57,79 @@ onAuthStateChanged(auth, user => {
   }
 });
 
-// Logout
-logoutBtn.addEventListener("click", () => signOut(auth));
-
-// Save note
-saveNoteBtn.addEventListener("click", async () => {
-  const note = noteInput.value.trim();
-  const followUp = followUpInput.value;
-  if (!note) return alert("Please enter a note");
-
-  await addDoc(collection(db, "notes"), {
-    uid: auth.currentUser.uid,
-    text: note,
-    createdAt: new Date(),
-    followUp: followUp ? new Date(followUp) : null
-  });
-
-  noteInput.value = "";
-  followUpInput.value = "";
+// === Logout ===
+logoutBtn.addEventListener("click", () => {
+  signOut(auth);
 });
 
-// Load notes in real-time
+// === Save note ===
+saveNoteBtn.addEventListener("click", async () => {
+  const user = auth.currentUser;
+  if (!user) return;
+
+  const noteContent = noteText.value.trim();
+  const followUpValue = followUpDateTime.value;
+
+  if (!noteContent) {
+    alert("Please write a note before saving.");
+    return;
+  }
+
+  try {
+    await addDoc(collection(db, "notes"), {
+      userId: user.uid,
+      note: noteContent,
+      followUp: followUpValue ? new Date(followUpValue) : null,
+      createdAt: serverTimestamp()
+    });
+
+    noteText.value = "";
+    followUpDateTime.value = "";
+  } catch (error) {
+    console.error("Error saving note:", error);
+    alert("Failed to save note.");
+  }
+});
+
+// === Load notes real-time ===
 function loadNotes(uid) {
-  const q = query(
+  // Recent notes
+  const recentQuery = query(
     collection(db, "notes"),
-    where("uid", "==", uid),
+    where("userId", "==", uid),
     orderBy("createdAt", "desc")
   );
 
-  onSnapshot(q, snapshot => {
-    recentNotesContainer.innerHTML = "";
-    upcomingNotesContainer.innerHTML = "";
-
-    snapshot.forEach(doc => {
+  onSnapshot(recentQuery, (snapshot) => {
+    recentNotesList.innerHTML = "";
+    snapshot.forEach((doc) => {
       const data = doc.data();
+      const li = document.createElement("li");
+      li.textContent = `${data.note} — ${data.createdAt?.toDate().toLocaleString() || ""}`;
+      recentNotesList.appendChild(li);
+    });
+  });
 
-      // Recent Notes
-      const noteDiv = document.createElement("div");
-      noteDiv.classList.add("note-card");
-      noteDiv.innerHTML = `<strong>${new Date(data.createdAt.seconds * 1000).toLocaleString()}</strong><br>${data.text}`;
-      recentNotesContainer.appendChild(noteDiv);
+  // Upcoming follow-ups
+  const upcomingQuery = query(
+    collection(db, "notes"),
+    where("userId", "==", uid),
+    orderBy("followUp", "asc")
+  );
 
-      // Upcoming
+  onSnapshot(upcomingQuery, (snapshot) => {
+    upcomingNotesList.innerHTML = "";
+    const now = new Date();
+    snapshot.forEach((doc) => {
+      const data = doc.data();
       if (data.followUp) {
-        const followDate = new Date(data.followUp.seconds * 1000);
-        const upDiv = document.createElement("div");
-        upDiv.classList.add("note-card");
-        if (followDate < new Date()) upDiv.classList.add("overdue");
-        upDiv.innerHTML = `<strong>${followDate.toLocaleString()}</strong><br>${data.text}`;
-        upcomingNotesContainer.appendChild(upDiv);
+        const followUpDate = data.followUp.toDate ? data.followUp.toDate() : new Date(data.followUp);
+        const li = document.createElement("li");
+        li.textContent = `${data.note} — Follow-up: ${followUpDate.toLocaleString()}`;
+        if (followUpDate <= now) {
+          li.style.color = "red";
+        }
+        upcomingNotesList.appendChild(li);
       }
     });
   });
