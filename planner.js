@@ -1,79 +1,106 @@
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getAuth, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
-import { getFirestore, collection, addDoc, query, where, orderBy, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getAuth, onAuthStateChanged, signOut } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+import { getFirestore, collection, addDoc, query, where, orderBy, onSnapshot } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
 
+// Firebase config
 const firebaseConfig = {
   apiKey: "AIzaSyAdT__ih2Cpx63eelLR3fkZuOp_XCdNc3k",
   authDomain: "planner-project-87612.firebaseapp.com",
   projectId: "planner-project-87612",
-  storageBucket: "planner-project-87612.firebasestorage.app",
+  storageBucket: "planner-project-87612.appspot.com",
   messagingSenderId: "625352854092",
   appId: "1:625352854092:web:ec816304828365d727c2e9"
 };
 
+// Init Firebase
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
 
-// Update clock
-function updateDateTime() {
-  document.getElementById("currentDateTime").textContent = new Date().toLocaleString();
-}
-setInterval(updateDateTime, 1000);
-updateDateTime();
+// UI Elements
+const currentDateTimeEl = document.getElementById("currentDateTime");
+const logoutBtn = document.getElementById("logoutBtn");
+const noteInput = document.getElementById("noteInput");
+const followUpInput = document.getElementById("followUpInput");
+const saveNoteBtn = document.getElementById("saveNoteBtn");
+const recentNotesContainer = document.getElementById("recentNotes");
+const upcomingNotesContainer = document.getElementById("upcomingNotes");
 
-// Auth state check
-onAuthStateChanged(auth, user => {
-  if (!user) window.location.href = "index.html";
-  else loadNotes(user.uid);
+// Tab switching
+document.querySelectorAll(".tab-button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-button").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".tab-content").forEach(c => c.classList.remove("active"));
+    btn.classList.add("active");
+    document.getElementById(btn.dataset.tab).classList.add("active");
+  });
 });
+
+// Show current date & time
+setInterval(() => {
+  const now = new Date();
+  currentDateTimeEl.textContent = now.toLocaleString();
+}, 1000);
+
+// Auth check
+onAuthStateChanged(auth, user => {
+  if (!user) {
+    window.location.href = "index.html";
+  } else {
+    loadNotes(user.uid);
+  }
+});
+
+// Logout
+logoutBtn.addEventListener("click", () => signOut(auth));
 
 // Save note
-document.getElementById("saveNoteBtn").addEventListener("click", async () => {
-  const noteText = document.getElementById("noteInput").value.trim();
-  const followUpTime = document.getElementById("followUpTime").value;
-  const user = auth.currentUser;
-
-  if (!noteText) return alert("Please write a note.");
+saveNoteBtn.addEventListener("click", async () => {
+  const note = noteInput.value.trim();
+  const followUp = followUpInput.value;
+  if (!note) return alert("Please enter a note");
 
   await addDoc(collection(db, "notes"), {
-    uid: user.uid,
-    text: noteText,
+    uid: auth.currentUser.uid,
+    text: note,
     createdAt: new Date(),
-    followUp: followUpTime ? new Date(followUpTime) : null
+    followUp: followUp ? new Date(followUp) : null
   });
 
-  document.getElementById("noteInput").value = "";
-  document.getElementById("followUpTime").value = "";
+  noteInput.value = "";
+  followUpInput.value = "";
 });
 
-// Load notes
+// Load notes in real-time
 function loadNotes(uid) {
-  const q = query(collection(db, "notes"), where("uid", "==", uid), orderBy("createdAt", "desc"));
-  onSnapshot(q, snapshot => {
-    const recentList = document.getElementById("recentNotes");
-    const upcomingList = document.getElementById("upcomingFollowUps");
-    recentList.innerHTML = "";
-    upcomingList.innerHTML = "";
+  const q = query(
+    collection(db, "notes"),
+    where("uid", "==", uid),
+    orderBy("createdAt", "desc")
+  );
 
-    const now = new Date();
+  onSnapshot(q, snapshot => {
+    recentNotesContainer.innerHTML = "";
+    upcomingNotesContainer.innerHTML = "";
 
     snapshot.forEach(doc => {
-      const note = doc.data();
-      const li = document.createElement("li");
-      li.textContent = `${note.text} (${note.createdAt.toDate().toLocaleString()})`;
-      recentList.appendChild(li);
+      const data = doc.data();
 
-      if (note.followUp) {
-        const followUpDate = note.followUp.toDate();
-        const liFollow = document.createElement("li");
-        liFollow.textContent = `${note.text} - ${followUpDate.toLocaleString()}`;
-        if (followUpDate <= now) liFollow.style.color = "red";
-        upcomingList.appendChild(liFollow);
+      // Recent Notes
+      const noteDiv = document.createElement("div");
+      noteDiv.classList.add("note-card");
+      noteDiv.innerHTML = `<strong>${new Date(data.createdAt.seconds * 1000).toLocaleString()}</strong><br>${data.text}`;
+      recentNotesContainer.appendChild(noteDiv);
+
+      // Upcoming
+      if (data.followUp) {
+        const followDate = new Date(data.followUp.seconds * 1000);
+        const upDiv = document.createElement("div");
+        upDiv.classList.add("note-card");
+        if (followDate < new Date()) upDiv.classList.add("overdue");
+        upDiv.innerHTML = `<strong>${followDate.toLocaleString()}</strong><br>${data.text}`;
+        upcomingNotesContainer.appendChild(upDiv);
       }
     });
   });
 }
-
-// Logout
-document.getElementById("logoutBtn").addEventListener("click", () => signOut(auth));
