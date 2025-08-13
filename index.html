@@ -1,0 +1,459 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Planner — Notes & Follow‑ups</title>
+<style>
+  :root{
+    --bg:#0f141a;
+    --panel:#121923;
+    --panel-2:#0f1823;
+    --text:#eef2f6;
+    --muted:#a6b3c4;
+    --accent:#3aa675;
+    --accent-2:#2f80ed;
+    --danger:#e55353;
+    --warn:#f0ad4e;
+    --border:#1e2a38;
+    --chip:#1a2533;
+    --done:#2f3640;
+    --radius:14px;
+    --shadow: 0 6px 22px rgba(0,0,0,.35), 0 2px 6px rgba(0,0,0,.25);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:linear-gradient(120deg,#0b1220,#0c1118 60%,#0b1016);
+    color:var(--text); font:16px/1.4 system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+  }
+  .app{
+    max-width:1200px; margin:32px auto; padding:0 16px;
+  }
+  header{
+    display:flex; align-items:center; justify-content:space-between; gap:16px; margin-bottom:16px;
+  }
+  header h1{font-size:22px; margin:0; letter-spacing:.2px}
+  .controls{display:flex; gap:8px; flex-wrap:wrap}
+  .btn{
+    border:1px solid var(--border); background:var(--panel); color:var(--text);
+    border-radius:10px; padding:10px 14px; cursor:pointer; box-shadow:var(--shadow);
+  }
+  .btn:hover{filter:brightness(1.08)}
+  .btn-danger{border-color:#3a1e25; background:linear-gradient(180deg,#241015,#1b0d11); color:#ffd7dd}
+  .grid{
+    display:grid; grid-template-columns: 1fr 1.2fr; gap:18px;
+  }
+  @media (max-width: 900px){ .grid{grid-template-columns:1fr} }
+
+  .card{
+    background:linear-gradient(180deg, var(--panel), var(--panel-2));
+    border:1px solid var(--border); border-radius:var(--radius); box-shadow:var(--shadow);
+  }
+  .card header{padding:14px 16px; border-bottom:1px solid var(--border)}
+  .card header h2{margin:0; font-size:18px}
+  .card .body{padding:16px}
+
+  /* Form */
+  .field{margin-bottom:14px}
+  .field label{display:block; font-size:13px; color:var(--muted); margin-bottom:6px}
+  textarea,input[type="datetime-local"], input[type="text"]{
+    width:100%; background:#0a111b; border:1px solid var(--border); color:var(--text);
+    border-radius:10px; padding:12px; outline:none;
+  }
+  textarea{min-height:140px; resize:vertical}
+  .row{display:flex; gap:10px; align-items:center; flex-wrap:wrap}
+  .muted{color:var(--muted); font-size:12px}
+
+  /* Lists */
+  .section-title{display:flex; align-items:center; justify-content:space-between; margin:0 0 8px}
+  .section-title h3{margin:0; font-size:15px; color:#dce5f3}
+  .list{display:flex; flex-direction:column; gap:10px; max-height:62vh; overflow:auto; padding-right:2px}
+  .empty{padding:14px; border:1px dashed var(--border); border-radius:12px; color:var(--muted); text-align:center}
+
+  .note{
+    border:1px solid var(--border); background:linear-gradient(180deg,#0b1521,#0a1119);
+    border-radius:12px; padding:12px; display:grid; grid-template-columns: 1fr auto; gap:10px; align-items:start;
+  }
+  .note.done{opacity:.65; background:linear-gradient(180deg,#0c1218,#0b1014)}
+  .note .title{white-space:pre-wrap}
+  .meta{display:flex; gap:8px; flex-wrap:wrap; margin-top:6px}
+  .chip{
+    background:var(--chip); padding:6px 10px; border-radius:999px; font-size:12px; color:#d6e2f3;
+    border:1px solid var(--border);
+  }
+  .due.due-now{background:linear-gradient(180deg,#2d1518,#1a0f12); color:#ffd9df; border-color:#3a1e25}
+  .due.due-soon{background:linear-gradient(180deg,#2b210f,#17110a); color:#ffe7c6; border-color:#3a2a14}
+  .due.due-later{background:linear-gradient(180deg,#122016,#0d1711); color:#cef0dd; border-color:#183224}
+  .actions{display:flex; gap:6px}
+  .icon-btn{
+    appearance:none; border:1px solid var(--border); background:#0a111b; color:#d8e6fa;
+    padding:8px 10px; border-radius:10px; cursor:pointer;
+  }
+  .icon-btn:hover{filter:brightness(1.1)}
+  .searchbar{display:flex; gap:8px; margin-bottom:10px}
+  .searchbar input{flex:1}
+  .small{font-size:11px}
+  .strike{text-decoration:line-through}
+  a.link{color:#9ec5ff; text-decoration:none}
+</style>
+</head>
+<body>
+<div class="app" role="application" aria-label="Planner App">
+  <header>
+    <h1>Planner — Notes & Follow‑ups</h1>
+    <div class="controls">
+      <button class="btn" id="exportBtn" title="Export all notes as JSON">Export</button>
+      <label class="btn" for="importFile" title="Import notes from JSON" style="cursor:pointer">Import</label>
+      <input type="file" id="importFile" accept="application/json" style="display:none" />
+      <button class="btn btn-danger" id="clearAllBtn" title="Delete everything">Clear All</button>
+    </div>
+  </header>
+
+  <div class="grid">
+    <!-- Left: Add / Edit -->
+    <section class="card" aria-labelledby="addNoteTitle">
+      <header><h2 id="addNoteTitle">Add / Edit Note</h2></header>
+      <div class="body">
+        <form id="noteForm">
+          <input type="hidden" id="noteId" />
+          <div class="field">
+            <label for="noteText">Note</label>
+            <textarea id="noteText" placeholder="Write your note... (Shift+Enter for newline)" required></textarea>
+          </div>
+          <div class="field">
+            <label for="followUp">Follow‑up date & time</label>
+            <input id="followUp" type="datetime-local" required />
+            <div class="muted small" id="followUpHelp"></div>
+          </div>
+          <div class="row">
+            <button class="btn" type="submit" id="saveBtn">Save</button>
+            <button class="btn" type="button" id="resetBtn">Reset</button>
+            <span class="muted small" id="statusMsg" role="status" aria-live="polite"></span>
+          </div>
+        </form>
+      </div>
+    </section>
+
+    <!-- Right: Lists -->
+    <section class="card" aria-labelledby="listsTitle">
+      <header><h2 id="listsTitle">Your Notes</h2></header>
+      <div class="body">
+        <div class="searchbar">
+          <input id="searchBox" type="text" placeholder="Search notes..." aria-label="Search notes" />
+          <button class="btn" id="toggleDoneBtn" title="Show/Hide completed">Hide Done</button>
+        </div>
+
+        <div class="section-title">
+          <h3>Upcoming</h3>
+          <span class="muted small">Soonest first</span>
+        </div>
+        <div id="upcomingList" class="list" aria-live="polite"></div>
+
+        <div class="section-title" style="margin-top:14px">
+          <h3>Recent</h3>
+          <span class="muted small">Newest first</span>
+        </div>
+        <div id="recentList" class="list" aria-live="polite"></div>
+
+        <div class="muted small" style="margin-top:8px">
+          Tips: Click a note to edit. Use the ✓ to mark done, 💤 to snooze +1 hour, and 🗑 to delete.
+        </div>
+      </div>
+    </section>
+  </div>
+</div>
+
+<script>
+(() => {
+  const STORAGE_KEY = 'plannerNotes_v1';
+  const $ = sel => document.querySelector(sel);
+  const noteForm = $('#noteForm');
+  const noteId = $('#noteId');
+  const noteText = $('#noteText');
+  const followUp = $('#followUp');
+  const statusMsg = $('#statusMsg');
+  const followUpHelp = $('#followUpHelp');
+  const saveBtn = $('#saveBtn');
+  const resetBtn = $('#resetBtn');
+  const clearAllBtn = $('#clearAllBtn');
+  const exportBtn = $('#exportBtn');
+  const importFile = $('#importFile');
+  const searchBox = $('#searchBox');
+  const toggleDoneBtn = $('#toggleDoneBtn');
+  const upcomingList = $('#upcomingList');
+  const recentList = $('#recentList');
+
+  let hideDone = false;
+
+  const nowISOLocal = () => {
+    const d = new Date();
+    d.setMinutes(d.getMinutes() - d.getTimezoneOffset()); // local ISO
+    return d.toISOString().slice(0,16);
+  };
+
+  const fmtDateTime = (iso) => {
+    try {
+      const d = new Date(iso);
+      return new Intl.DateTimeFormat(undefined, {
+        dateStyle:'medium', timeStyle:'short'
+      }).format(d);
+    } catch { return iso; }
+  };
+
+  const relTime = (iso) => {
+    const target = new Date(iso).getTime();
+    const diffMs = target - Date.now();
+    const abs = Math.abs(diffMs);
+    const mins = Math.round(abs/60000);
+    if (mins < 1) return diffMs <=0 ? 'now' : 'in <1 min';
+    if (mins < 60) return diffMs<0 ? `${mins} min ago` : `in ${mins} min`;
+    const hrs = Math.round(mins/60);
+    if (hrs < 24) return diffMs<0 ? `${hrs} hr ago` : `in ${hrs} hr`;
+    const days = Math.round(hrs/24);
+    return diffMs<0 ? `${days} d ago` : `in ${days} d`;
+  };
+
+  const statusClassFor = (iso) => {
+    const ms = new Date(iso).getTime() - Date.now();
+    if (ms <= 0) return 'due-now';
+    if (ms <= 3*60*60*1000) return 'due-soon'; // within 3 hours
+    return 'due-later';
+  };
+
+  const load = () => {
+    try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
+    catch { return []; }
+  };
+  const save = (arr) => localStorage.setItem(STORAGE_KEY, JSON.stringify(arr));
+
+  const upsertNote = (n) => {
+    const arr = load();
+    const idx = arr.findIndex(x => x.id === n.id);
+    if (idx >= 0) arr[idx] = n; else arr.push(n);
+    save(arr); render(); flash('Saved');
+  };
+
+  const deleteNote = (id) => {
+    const arr = load().filter(n => n.id !== id);
+    save(arr); render(); flash('Deleted');
+  };
+
+  const markDone = (id, done=true) => {
+    const arr = load();
+    const it = arr.find(n => n.id === id);
+    if (it){ it.done = done; it.updatedAt = new Date().toISOString(); save(arr); render(); }
+  };
+
+  const snooze = (id, mins=60) => {
+    const arr = load();
+    const it = arr.find(n => n.id === id);
+    if (it){
+      const t = new Date(it.followUpAt);
+      t.setMinutes(t.getMinutes()+mins);
+      it.followUpAt = t.toISOString();
+      it.updatedAt = new Date().toISOString();
+      save(arr); render(); flash(`Snoozed ${mins} min`);
+    }
+  };
+
+  const flash = (msg) => {
+    statusMsg.textContent = msg;
+    setTimeout(()=>statusMsg.textContent='', 1200);
+  };
+
+  // Rendering
+  const render = () => {
+    const q = searchBox.value.trim().toLowerCase();
+    const items = load()
+      .slice()
+      .sort((a,b) => new Date(a.createdAt) - new Date(b.createdAt)); // stable
+
+    const matches = it => !q || it.text.toLowerCase().includes(q);
+
+    const upcoming = items
+      .filter(it => matches(it) && !it.done)
+      .sort((a,b) => new Date(a.followUpAt) - new Date(b.followUpAt));
+
+    const recent = items
+      .filter(it => matches(it))
+      .sort((a,b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    // Upcoming list
+    upcomingList.innerHTML = '';
+    const upcomingToShow = hideDone ? upcoming : upcoming; // all are not-done already
+    if (upcomingToShow.length === 0) {
+      upcomingList.innerHTML = `<div class="empty">No upcoming items. Add one on the left.</div>`;
+    } else {
+      for (const it of upcomingToShow) {
+        upcomingList.appendChild(renderNote(it));
+      }
+    }
+
+    // Recent list
+    recentList.innerHTML = '';
+    const recentToShow = hideDone ? recent.filter(n=>!n.done) : recent;
+    if (recentToShow.length === 0) {
+      recentList.innerHTML = `<div class="empty">Nothing here yet.</div>`;
+    } else {
+      for (const it of recentToShow) {
+        recentList.appendChild(renderNote(it, {compact:true}));
+      }
+    }
+  };
+
+  const renderNote = (it, {compact=false} = {}) => {
+    const wrap = document.createElement('article');
+    wrap.className = 'note' + (it.done ? ' done' : '');
+    wrap.tabIndex = 0;
+    wrap.role = 'group';
+    wrap.ariaLabel = 'Note';
+    wrap.addEventListener('click', (e) => {
+      // Avoid click when clicking on buttons
+      if (e.target.closest('button')) return;
+      startEdit(it);
+    });
+
+    wrap.innerHTML = `
+      <div>
+        <div class="title ${it.done ? 'strike':''}">${escapeHtml(it.text)}</div>
+        <div class="meta">
+          <span class="chip due ${statusClassFor(it.followUpAt)}" title="${fmtDateTime(it.followUpAt)}">
+            ⏰ ${fmtDateTime(it.followUpAt)} • ${relTime(it.followUpAt)}
+          </span>
+          <span class="chip" title="Created at ${fmtDateTime(it.createdAt)}">🗓️ Created ${relTime(it.createdAt)}</span>
+          ${it.done ? `<span class="chip" title="Completed">✓ Done</span>`: ``}
+          ${compact ? `` : `<span class="chip" title="ID">#${it.id.slice(0,6)}</span>`}
+        </div>
+      </div>
+      <div class="actions">
+        <button class="icon-btn" title="${it.done ? 'Mark as not done':'Mark as done'}">${it.done ? '↺' : '✓'}</button>
+        <button class="icon-btn" title="Snooze 1 hour">💤</button>
+        <button class="icon-btn" title="Delete">🗑</button>
+      </div>
+    `;
+
+    const [doneBtn, snoozeBtn, delBtn] = wrap.querySelectorAll('.icon-btn');
+    doneBtn.addEventListener('click', (e)=>{ e.stopPropagation(); markDone(it.id, !it.done); });
+    snoozeBtn.addEventListener('click', (e)=>{ e.stopPropagation(); snooze(it.id, 60); });
+    delBtn.addEventListener('click', (e)=>{
+      e.stopPropagation();
+      if (confirm('Delete this note?')) deleteNote(it.id);
+    });
+
+    return wrap;
+  };
+
+  // Helpers
+  const escapeHtml = (s) => s.replace(/[&<>"']/g, c => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[c]));
+
+  const startEdit = (it) => {
+    noteId.value = it.id;
+    noteText.value = it.text;
+    followUp.value = toLocalDatetimeValue(it.followUpAt);
+    saveBtn.textContent = 'Update';
+    noteText.focus();
+  };
+
+  const resetForm = () => {
+    noteId.value = '';
+    noteText.value = '';
+    followUp.value = nowISOLocal();
+    saveBtn.textContent = 'Save';
+  };
+
+  const toLocalDatetimeValue = (iso) => {
+    const d = new Date(iso);
+    d.setMinutes(d.getMinutes() - d.getTimezoneOffset());
+    return d.toISOString().slice(0,16);
+  };
+
+  // Events
+  followUp.addEventListener('input',()=>{
+    try{
+      const when = new Date(followUp.value);
+      followUpHelp.textContent = when.toString().includes('Invalid') ? '' : `→ ${new Intl.DateTimeFormat(undefined,{dateStyle:'full', timeStyle:'short'}).format(when)}`;
+    }catch{ followUpHelp.textContent=''; }
+  });
+
+  noteForm.addEventListener('submit', (e)=>{
+    e.preventDefault();
+    const id = noteId.value || crypto.randomUUID();
+    const text = noteText.value.trim();
+    const fuLocal = followUp.value;
+    if (!text) { noteText.focus(); return; }
+    if (!fuLocal) { followUp.focus(); return; }
+    const fuDate = new Date(fuLocal); // local to ISO
+    const iso = fuDate.toISOString();
+
+    const now = new Date().toISOString();
+    const existing = load().find(n => n.id === id);
+
+    const record = {
+      id,
+      text,
+      createdAt: existing ? existing.createdAt : now,
+      updatedAt: now,
+      followUpAt: iso,
+      done: existing ? existing.done : false
+    };
+    upsertNote(record);
+    resetForm();
+  });
+
+  resetBtn.addEventListener('click', resetForm);
+
+  searchBox.addEventListener('input', render);
+
+  toggleDoneBtn.addEventListener('click', ()=>{
+    hideDone = !hideDone;
+    toggleDoneBtn.textContent = hideDone ? 'Show Done' : 'Hide Done';
+    render();
+  });
+
+  clearAllBtn.addEventListener('click', ()=>{
+    if (confirm('This will permanently delete all notes on this device. Continue?')) {
+      localStorage.removeItem(STORAGE_KEY);
+      render();
+      flash('Cleared');
+    }
+  });
+
+  exportBtn.addEventListener('click', ()=>{
+    const data = JSON.stringify(load(), null, 2);
+    const blob = new Blob([data], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'planner-notes.json';
+    document.body.appendChild(a); a.click();
+    URL.revokeObjectURL(url); a.remove();
+  });
+
+  importFile.addEventListener('change', async (e)=>{
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const arr = JSON.parse(text);
+      if (!Array.isArray(arr)) throw new Error('Invalid file');
+      save(arr); render(); flash('Imported');
+    } catch (err) {
+      alert('Import failed: ' + err.message);
+    } finally {
+      importFile.value = '';
+    }
+  });
+
+  // Init
+  followUp.value = nowISOLocal();
+  followUp.dispatchEvent(new Event('input'));
+  render();
+
+  // Periodic refresh so relative times update
+  setInterval(render, 60*1000);
+})();
+</script>
+</body>
+</html>
